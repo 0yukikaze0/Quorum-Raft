@@ -1,0 +1,16 @@
+{
+  "name": "raft-maker",
+  "version": "1.0.0",
+  "description": "Quorum Raft Scripts",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "Ashfaq Ahmed Shaik",
+  "license": "ISC",
+  "dependencies": {
+    "config": "^1.26.1",
+    "inquirer": "^3.2.1",
+    "quorum-keygen": "^1.0.3"
+  }
+}
