@@ -1,0 +1,9 @@
+{
+    "stagingRoot":"./Networks/",
+    "defaults" : {
+        "nodeCount" : 3
+    },
+    "constraints" : {
+        "maxNodeCount" : 10
+    }
+}
