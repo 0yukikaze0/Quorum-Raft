@@ -1,5 +1,5 @@
 /* +--------------------------------------------------------------+
- *  Quorum Network composition script v1.0
+ *  Quorum Network Composition Script v1.0
  *  Author : Ashfaq Ahmed Shaik
  * 
  *  This interactive script allows users to compose a quorum network
@@ -12,6 +12,7 @@
  * +--------------------------------------------------------------+*/
 
 var fs              = require('fs');
+var shell           = require('shelljs');
 var config          = require('config');
 var crypto          = require('crypto');
 var inquire         = require('inquirer');
@@ -46,17 +47,47 @@ let scaffolding = {
 }
 /*--------------------------------------------------------------*/
 
-prompt = () => {
+/**
+ * Entry method. Promise chained
+ */
+execute = () => {
 
-    inquire.prompt(questions)
+    loadInventory()
+        .then( ()           => inquire.prompt(questions))
         .then((answers)     => sanitize(answers))
-        .then((paramMap)    => buildScaffolding(paramMap))
-        .then((paramMap)    => generateKeyPairs(paramMap))
-
+        .then(()            => buildScaffolding())
+        .then(()            => generateKeyPairs())
+        .then(()            => mapNetworkListing())
 }
 
-sanitize = (paramMap) => {
+loadInventory = () => {
     return new Promise( (resolve, reject) => {
+        /**
+         * Check if inventory.json exists
+         *  -> If not create one
+         *  -> Load contents into memory
+         */
+        if(!fs.existsSync(config.get('stagingRoot') + 'inventory.json')){
+            console.log('|+- Unable to find inventory.json  -+|');
+            console.log('|+- Creating default inventory     -+|');
+            this._inventory = {};
+            fs.writeFileSync(config.get('stagingRoot') + 'inventory.json',JSON.stringify(this._inventory));
+        } else {
+            this._inventory = JSON.parse(fs.readFileSync(config.get('stagingRoot') + 'inventory.json'));
+            console.log('|+- Inventory Loaded               -+|');
+        }
+        resolve();
+    })
+    
+}
+
+/**
+ * Sanitizes user input. Read internal comments for details
+ * @return {Promise}
+ */
+sanitize = (answers) => {
+    return new Promise( (resolve, reject) => {
+        this._paramMap = answers;
         console.log('+-----------------------------------+');
         console.log(' > Validating network config');
 
@@ -70,70 +101,97 @@ sanitize = (paramMap) => {
         // [1a]
         console.log('   [X] - Sanitizing network name');
         let uniqueNetworkId = crypto.randomBytes(8).toString('hex');
-        paramMap.uniqueId = uniqueNetworkId;
-        if(paramMap.networkName == undefined || paramMap.networkName == null || paramMap.networkName.length == 0){
-            paramMap.networkName = uniqueNetworkId;
-            console.log(`           +- Network name not detected -> Injecting ${paramMap.networkName} as Network Name`)
+        this._paramMap.uniqueId = uniqueNetworkId;
+        if(this._paramMap.networkName == undefined || this._paramMap.networkName == null || this._paramMap.networkName.length == 0){
+            this._paramMap.networkName = uniqueNetworkId;
+            console.log(`           +- Network name not detected -> Injecting ${this._paramMap.networkName} as Network Name`)
         } 
 
         // [1b]
-        paramMap.networkName = paramMap.networkName.replace(/ /g,'_');
+        this._paramMap.networkName = this._paramMap.networkName.replace(/ /g,'_');
 
         // [2]
         console.log('   [X] - Checking node count');
-        paramMap.nodeCount = parseInt(paramMap.nodeCount);
+        this._paramMap.nodeCount = parseInt(this._paramMap.nodeCount);
         let maxNodeCount = config.get('constraints.maxNodeCount');
-        if(isNaN(paramMap.nodeCount) || paramMap.nodeCount == 0){
-            paramMap.nodeCount = config.get('defaults.nodeCount');
-            console.log(`           +- Invalid node count. Defaulting to ${paramMap.nodeCount}`);
+        if(isNaN(this._paramMap.nodeCount) || this._paramMap.nodeCount == 0){
+            this._paramMap.nodeCount = config.get('defaults.nodeCount');
+            console.log(`           +- Invalid node count. Defaulting to ${this._paramMap.nodeCount}`);
         }
-        if(paramMap.nodeCount > maxNodeCount){
-            console.log(`           +- Chosen node count ${paramMap.nodeCount} exceeds max cap of ${maxNodeCount}. Capping to ${maxNodeCount}`);
-            paramMap.nodeCount = maxNodeCount;
+        if(this._paramMap.nodeCount > maxNodeCount){
+            console.log(`           +- Chosen node count ${this._paramMap.nodeCount} exceeds max cap of ${maxNodeCount}. Capping to ${maxNodeCount}`);
+            this._paramMap.nodeCount = maxNodeCount;
         }
 
-        resolve(paramMap);
+        resolve(this._paramMap);
     })
 }
 
-buildScaffolding = (paramMap) => {
+/**
+ * Builds folder structure needed to house network assets and components
+ * @return {Promise}
+ */
+buildScaffolding = () => {
     return new Promise( (resolve, reject) => {
         console.log('');
         console.log(' > Creating scaffolding');
         console.log('   [x] - Creating folders');
-        let stagingDir = config.get('stagingRoot') + paramMap.networkName + '_' + paramMap.uniqueId;
-        paramMap.stagingDir = stagingDir;
+        let stagingDir = config.get('stagingRoot') + this._paramMap.networkName;
+        this._paramMap.stagingDir = stagingDir;
         fs.mkdirSync(stagingDir);
         for(candidate in scaffolding) {
             fs.mkdirSync(stagingDir + scaffolding[candidate]);
         }
-        resolve(paramMap);
+        resolve(this._paramMap);
     })
 }
 
-generateKeyPairs = (paramMap) => {
+/**
+ * Builds key pairs for quorum accounts and quorum nodes
+ * @return {Promise}
+ */
+generateKeyPairs = () => {
     return new Promise( (resolve, reject) => {
         console.log('');
         console.log(' > Generating Keys');
         console.log('   [x] - Generating node keys')
-        for (let i = 1; i <= paramMap.nodeCount; i++) {
+        for (let i = 1; i <= this._paramMap.nodeCount; i++) {
             let nodeName = 'Node' + i;
             console.log(`       +- ${nodeName}`);
             let nodeKeyPair = quorumKeygen.generateNodeKeys();
-            fs.writeFileSync(paramMap.stagingDir + scaffolding.nodeKeys + nodeName + 'keypair.json', JSON.stringify(nodeKeyPair));
-            fs.writeFileSync(paramMap.stagingDir + scaffolding.nodeKeys + nodeName, nodeKeyPair.privateKey);
+            fs.writeFileSync(this._paramMap.stagingDir + scaffolding.nodeKeys + nodeName + 'keypair.json', JSON.stringify(nodeKeyPair));
+            fs.writeFileSync(this._paramMap.stagingDir + scaffolding.nodeKeys + nodeName, nodeKeyPair.privateKey);
         }
 
         console.log('   [x] - Generating account key pairs');
-        for (let i = 1; i <= paramMap.nodeCount; i++) {
+        for (let i = 1; i <= this._paramMap.nodeCount; i++) {
             let nodeName = 'Node' + i;
             console.log(`       +- ${nodeName}`);
             let keyPair = quorumKeygen.createNewAccount(nodeName);
-            fs.writeFileSync(paramMap.stagingDir + scaffolding.keys + nodeName , JSON.stringify(keyPair));
+            fs.writeFileSync(this._paramMap.stagingDir + scaffolding.keys + nodeName , JSON.stringify(keyPair));
         }
-       console.log('+-----------------------------------+');
+        resolve(this._paramMap);
     })
     
 }
 
-prompt();
+/**
+ * Maps current network composition into an index file for future reference
+ * - For compatibility, store metadata into the same folder
+ */
+mapNetworkListing = () => {
+    return new Promise( (resolve, reject) => {
+        this._inventory[this._paramMap.networkName] = {
+            nodeCount   : this._paramMap.nodeCount,
+            stagingDir  : this._paramMap.stagingDir,
+            uniqueId    : this._paramMap.uniqueId
+        }
+        fs.writeFileSync(config.get('stagingRoot') + 'inventory.json', JSON.stringify(this._inventory, null, 4));
+        console.log('');
+        console.log(' > Inventory Updated');
+        console.log('+-----------------------------------+');
+    })
+    
+}
+
+execute();
