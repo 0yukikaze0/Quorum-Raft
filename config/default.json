@@ -1,9 +1,22 @@
-{
-    "stagingRoot":"./Networks/",
-    "defaults" : {
-        "nodeCount" : 3
+{    
+    "stagingRoot": "/home/ashfaq/Workspaces/Gitrepos/Quorum-Raft/Networks/",
+    "prerequisites": [
+        "docker"
+    ],
+    "defaults": {
+        "nodeCount": 3
     },
-    "constraints" : {
-        "maxNodeCount" : 10
+    "constraints": {
+        "maxNodeCount": 10
+    },
+    "containerConfig" : {
+        "imageName": "broadridge/quorum:1.2.0",
+        "stagingName" : "quorumStaging"
+    },
+    "directives" : {
+        "startStagingContainer" : "docker start {{stagingName}} >> /dev/null",
+        "removeStaleContainer" : "docker stop {{stagingName}} && docker rm {{stagingName}}",
+        "initStagingContainer" : "docker run -td --name {{stagingName}} -v {{hostMount}}:/data {{imageName}}",
+        "generateConstellationKeys" : "docker exec -it {{stagingName}} constellation-node --generatekeys=/data/{{nodeName}}"
     }
 }
