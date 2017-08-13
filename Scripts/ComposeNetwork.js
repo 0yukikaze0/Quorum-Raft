@@ -16,7 +16,9 @@ var shell           = require('shelljs');
 var config          = require('config');
 var crypto          = require('crypto');
 var inquire         = require('inquirer');
+var handleBars      = require('handlebars');
 var quorumKeygen    = require('quorum-keygen');
+var child_process   = require('child_process');
 
 /*--------------------------------------------------------------*
  * Prompts
@@ -42,7 +44,7 @@ let scaffolding = {
     'keys'                  : '/keys/',
     'nodeKeys'              : '/nodeKeys/',
     'constellation'         : '/constellation/',
-    'constellationConfigs'  : '/constellation/Configs/',
+    'constellationConfigs'  : '/constellation/configs/',
     'constellationKeys'     : '/constellation/keys/'
 }
 /*--------------------------------------------------------------*/
@@ -51,13 +53,39 @@ let scaffolding = {
  * Entry method. Promise chained
  */
 execute = () => {
-
-    loadInventory()
-        .then( ()           => inquire.prompt(questions))
+    
+    checkPrerequisites()
+        .then(()            => loadInventory())    
+        .then(()            => inquire.prompt(questions))
         .then((answers)     => sanitize(answers))
         .then(()            => buildScaffolding())
         .then(()            => generateKeyPairs())
+        .then(()            => startStagingContainer())
+        .then(()            => generateConstellationKeys())
+        .then(()            => generateConstellationConfigs())
+        .then(()            => generateGenesisFile())
         .then(()            => mapNetworkListing())
+}
+
+checkPrerequisites = () => {
+    return new Promise( (resolve, reject) => {
+        let goFlag = true;
+        
+        let checkSubjects = config.get('prerequisites');
+        
+        checkSubjects.forEach(function(subject) {
+            if(!shell.which(subject)){
+                console.log(`Unable to find ${subject}. Please install ${subject} and run composer again.`);
+                goFlag = false;
+            }
+        }, this);
+        
+        if(goFlag){
+            resolve();
+        } else {
+            process.exit();
+        }    
+    }); 
 }
 
 loadInventory = () => {
@@ -154,7 +182,7 @@ generateKeyPairs = () => {
     return new Promise( (resolve, reject) => {
         console.log('');
         console.log(' > Generating Keys');
-        console.log('   [x] - Generating node keys')
+        console.log('   [x] - Generating node keypairs')
         for (let i = 1; i <= this._paramMap.nodeCount; i++) {
             let nodeName = 'Node' + i;
             console.log(`       +- ${nodeName}`);
@@ -175,9 +203,107 @@ generateKeyPairs = () => {
     
 }
 
+startStagingContainer = () => {
+    return new Promise( (resolve, reject) => {
+        console.log('');
+        console.log(' > Starting staging Container');
+        let containerConfig = config.get('containerConfig');
+        let stagingTemplate = null;
+        let stagingDirective = null;
+        
+        /**
+         * Stop and remove any stale staging containers
+         */
+        console.log('   [x] - Detecting & removing stale container...');
+        stagingTemplate = handleBars.compile(config.get('directives.removeStaleContainer'));
+        stagingDirective = stagingTemplate(containerConfig);
+        shell.exec(stagingDirective,{silent:true});
+        /**
+         * Run a new container instance
+         *  +- Mount ./Networks/<networkName/constellation/keys/> to /data
+         */
+        containerConfig.hostMount = `${this._paramMap.stagingDir}/constellation/keys`;
+        console.log('   [x] - Initializing stage container...');
+        stagingTemplate = handleBars.compile(config.get('directives.initStagingContainer'));
+        stagingDirective = stagingTemplate(containerConfig);
+                
+        shell.exec(stagingDirective);
+
+        /** 
+         * Check if our run directive was successful
+         */
+        let chkSts = `docker inspect --format "{{ .State.Status }}" ${containerConfig.stagingName}`;
+        let status = shell.exec(chkSts,{silent:true}).stdout;
+        console.log(`   [x] - Container status : ${status}`);
+        if(status.trim() === 'running'){
+            resolve();
+        } else {
+            console.log('Failed to initialize staging container to create constellation key pairs');
+            process.exit();
+        }
+        
+    });
+}
+
+/**
+ * Runs a docker command to generate constellation key pair
+ * @return {Promise}
+ */
+generateConstellationKeys = () => {
+    return new Promise( (resolve, reject) => {
+        console.log('');
+        console.log(' > Generating Constellation keypairs');
+        let containerConfig = config.get('containerConfig');
+        /** Generate constellation keys for all nodes */
+        for (let i = 1; i <= this._paramMap.nodeCount; i++) {
+            let nodeName = 'Node' + i;
+            console.log(`       +- Generating constellation key pair for ${nodeName}`);
+            containerConfig.nodeName = nodeName;
+            
+            child_process.spawnSync('docker', [ 'exec', '-it', containerConfig.stagingName, 'constellation-node', `--generatekeys=/data/${nodeName}` ], {
+                stdio: 'inherit'
+            });
+        }
+        resolve();
+    });
+}
+
+/**
+ * Generates config files for constellation
+ * @return {Promise}
+ */
+generateConstellationConfigs = () => {
+    return new Promise( (resolve, reject) => {
+        console.log('');
+        console.log(' > Writing constellation configurations');
+        for (let i = 1; i <= this._paramMap.nodeCount; i++) {
+            let nodeName = 'Node' + i;
+            let fileContent =     `url = "http://127.0.0.1:9000/" \n`
+                                + `port = 9000 \n`
+                                + `socket = "/data/quorum/constellation/constellation_${nodeName}.ipc" \n`
+                                + `otherNodeUrls = [] \n`
+                                + `publickeys = ["/data/quorum/constellation/constellation_${nodeName}.pub"] \n`
+                                + `privatekeys = ["/data/quorum/constellation/constellation_${nodeName}.key"] \n`
+                                + `storage = "/data/quorum/constellation/storage" \n`;
+            fs.writeFileSync(`${this._paramMap.stagingDir}/constellation/configs/constellation_${nodeName}.conf`, fileContent );
+        }
+        resolve();
+    });
+}
+
+generateGenesisFile = () => {
+    return new Promise( (resolve, reject) => {
+        console.log('');
+        console.log(' > Building genesis file');
+        shell.exec(`node ./Scripts/ComposeGenesis.js ${this._paramMap.networkName}`);
+        resolve();
+    });
+}
+
 /**
  * Maps current network composition into an index file for future reference
  * - For compatibility, store metadata into the same folder
+ * @return {Promise}
  */
 mapNetworkListing = () => {
     return new Promise( (resolve, reject) => {
@@ -193,5 +319,7 @@ mapNetworkListing = () => {
     })
     
 }
+
+
 
 execute();
