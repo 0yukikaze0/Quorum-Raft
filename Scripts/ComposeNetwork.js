@@ -33,6 +33,11 @@ let questions = [
         type: 'input',
         name: 'nodeCount',
         message : 'Enter number of nodes :'
+    },
+    {
+        type: 'input',
+        name: 'portStart',
+        message : 'Enter port number to start ranging from :'
     }
 ]
 /*--------------------------------------------------------------*/
@@ -166,6 +171,7 @@ buildScaffolding = () => {
         console.log('   [x] - Creating folders');
         let stagingDir = config.get('stagingRoot') + this._paramMap.networkName;
         this._paramMap.stagingDir = stagingDir;
+        this._paramMap.nodes = [];
         fs.mkdirSync(stagingDir);
         for(candidate in scaffolding) {
             fs.mkdirSync(stagingDir + scaffolding[candidate]);
@@ -187,16 +193,17 @@ generateKeyPairs = () => {
             let nodeName = 'Node' + i;
             console.log(`       +- ${nodeName}`);
             let nodeKeyPair = quorumKeygen.generateNodeKeys();
-            fs.writeFileSync(this._paramMap.stagingDir + scaffolding.nodeKeys + nodeName + 'keypair.json', JSON.stringify(nodeKeyPair));
-            fs.writeFileSync(this._paramMap.stagingDir + scaffolding.nodeKeys + nodeName, nodeKeyPair.privateKey);
+            fs.writeFileSync(this._paramMap.stagingDir + scaffolding.nodeKeys + nodeName + '_keypair.json', JSON.stringify(nodeKeyPair));
+            fs.writeFileSync(this._paramMap.stagingDir + scaffolding.nodeKeys + nodeName + '_nodeKey', nodeKeyPair.privateKey);
         }
 
         console.log('   [x] - Generating account key pairs');
         for (let i = 1; i <= this._paramMap.nodeCount; i++) {
             let nodeName = 'Node' + i;
+            this._paramMap.nodes.push(nodeName);
             console.log(`       +- ${nodeName}`);
             let keyPair = quorumKeygen.createNewAccount(nodeName);
-            fs.writeFileSync(this._paramMap.stagingDir + scaffolding.keys + nodeName , JSON.stringify(keyPair));
+            fs.writeFileSync(this._paramMap.stagingDir + scaffolding.keys + nodeName + '_account' , JSON.stringify(keyPair));
         }
         resolve(this._paramMap);
     })
@@ -260,10 +267,11 @@ generateConstellationKeys = () => {
             console.log(`       +- Generating constellation key pair for ${nodeName}`);
             containerConfig.nodeName = nodeName;
             
-            child_process.spawnSync('docker', [ 'exec', '-it', containerConfig.stagingName, 'constellation-node', `--generatekeys=/data/${nodeName}` ], {
+            child_process.spawnSync('docker', [ 'exec', '-it', containerConfig.stagingName, 'constellation-node', `--generatekeys=/data/${nodeName}_constellation` ], {
                 stdio: 'inherit'
             });
         }
+        shell.exec(`docker stop ${containerConfig.stagingName} && docker rm ${containerConfig.stagingName}`);
         resolve();
     });
 }
@@ -280,17 +288,21 @@ generateConstellationConfigs = () => {
             let nodeName = 'Node' + i;
             let fileContent =     `url = "http://127.0.0.1:9000/" \n`
                                 + `port = 9000 \n`
-                                + `socket = "/data/quorum/constellation/constellation_${nodeName}.ipc" \n`
+                                + `socket = "/data/quorum/constellation/${nodeName}_constellation.ipc" \n`
                                 + `otherNodeUrls = [] \n`
-                                + `publickeys = ["/data/quorum/constellation/constellation_${nodeName}.pub"] \n`
-                                + `privatekeys = ["/data/quorum/constellation/constellation_${nodeName}.key"] \n`
+                                + `publickeys = ["/data/quorum/constellation/keystore/${nodeName}_constellation.pub"] \n`
+                                + `privatekeys = ["/data/quorum/constellation/keystore/${nodeName}_constellation.key"] \n`
                                 + `storage = "/data/quorum/constellation/storage" \n`;
-            fs.writeFileSync(`${this._paramMap.stagingDir}/constellation/configs/constellation_${nodeName}.conf`, fileContent );
+            fs.writeFileSync(`${this._paramMap.stagingDir}/constellation/configs/${nodeName}_constellation.conf`, fileContent );
         }
         resolve();
     });
 }
 
+/**
+ * Calls external script to generate a genesis file based on current key pairs
+ * @return {Promise}
+ */
 generateGenesisFile = () => {
     return new Promise( (resolve, reject) => {
         console.log('');
@@ -307,6 +319,14 @@ generateGenesisFile = () => {
  */
 mapNetworkListing = () => {
     return new Promise( (resolve, reject) => {
+
+        /**
+         * Write meta data
+         */
+        fs.writeFileSync(this._paramMap.stagingDir + '/' + 'meta.json', JSON.stringify(this._paramMap, null, 4));
+        /**
+         * Update inventory
+         */
         this._inventory[this._paramMap.networkName] = {
             nodeCount   : this._paramMap.nodeCount,
             stagingDir  : this._paramMap.stagingDir,
