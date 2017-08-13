@@ -1,5 +1,6 @@
 {    
-    "stagingRoot": "/home/ashfaq/Workspaces/Gitrepos/Quorum-Raft/Networks/",
+    "stagingRoot"       : "/home/ashfaq/Workspaces/Gitrepos/Quorum-Raft/Networks/",
+    "volumeMountRoot"   : "/home/ashfaq/quorum/networks/", 
     "prerequisites": [
         "docker"
     ],
