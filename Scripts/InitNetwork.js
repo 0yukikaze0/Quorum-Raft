@@ -36,6 +36,9 @@ execute = () => {
         .then(()        => createNodeScaffolding())
         .then(()        => createDockerNetwork())
         .then(()        => launchContainers())
+        .then(()        => mapAddresses())
+        .then(()        => writeStaticNodes())
+        .then(()        => writePermissioning())
         .then(()        => initNetwork())
 }
 
@@ -105,7 +108,7 @@ createNodeScaffolding = () => {
             shell.cp(   `${config.get('stagingRoot')}${this._paramMap.networkName}/nodeKeys/*${nodeName}_*`,
                         `${config.get('volumeMountRoot')}${this._paramMap.networkName}/datadirs/${nodeName}/geth/`);
             shell.mv(   `${config.get('volumeMountRoot')}${this._paramMap.networkName}/datadirs/${nodeName}/geth/${nodeName}_nodeKey`,
-                        `${config.get('volumeMountRoot')}${this._paramMap.networkName}/datadirs/${nodeName}/geth/nodeKey`);
+                        `${config.get('volumeMountRoot')}${this._paramMap.networkName}/datadirs/${nodeName}/geth/nodekey`);
             // [3]
             shell.cp(   `${config.get('stagingRoot')}${this._paramMap.networkName}/keys/*${nodeName}_*`,
                         `${config.get('volumeMountRoot')}${this._paramMap.networkName}/datadirs/${nodeName}/keystore/`);
@@ -138,6 +141,7 @@ createDockerNetwork = () => {
 
 /**
  * Launches docker containers with proper volume mounts to host data directories
+ * TODO : Optimize later
  * @return {Promise}
  */
 launchContainers = () => {
@@ -148,24 +152,101 @@ launchContainers = () => {
         console.log('   [*]- Initializing containers');
         for (let i = 0; i < this._paramMap.nodes.length; i++) {
             let nodeName = this._paramMap.nodes[i];
+            let runDirective = null;
+            let lastConstellationPort = 0;
             let portStart = parseInt(this._paramMap.portStart);
-            let constellationPort = portStart + i;
-            let rpcPort = constellationPort + this._paramMap.nodeCount;
-            let raftPort = rpcPort + 20000;
-            
-            let runDirective =    `docker  run -td `
+
+            if(this._paramMap.mapAllPorts || i == 0){
+
+                if(lastConstellationPort == 0){
+                    lastConstellationPort = portStart - 4;
+                }
+                let constellationPort = lastConstellationPort + 4;
+                lastConstellationPort = constellationPort;
+                let rpcPort = constellationPort + 3;
+                let raftPort = rpcPort + 20000;
+                
+                runDirective =    `docker  run -td `
                                 + ` --name ${this._paramMap.networkName}_${nodeName}`
                                 + ` --network ${this._paramMap.networkName}`
                                 + ` -v $HOME/quorum/networks/${this._paramMap.networkName}/genesis:/data/genesis`
                                 + ` -v $HOME/quorum/networks/${this._paramMap.networkName}/datadirs/${nodeName}:/data/quorum`
-                                + ` -p ${constellationPort}:${constellationPort}`
-                                + ` -p ${rpcPort}:${rpcPort}`
-                                + ` -p ${raftPort}:${raftPort}`
+                                + ` -p ${constellationPort}:30300`
+                                + ` -p ${rpcPort}:30303`
+                                + ` -p ${raftPort}:50303`
                                 + ` ${config.get('containerConfig.imageName')} > /dev/null`;
+
+            } else {
+                runDirective =    `docker  run -td `
+                                + ` --name ${this._paramMap.networkName}_${nodeName}`
+                                + ` --network ${this._paramMap.networkName}`
+                                + ` -v $HOME/quorum/networks/${this._paramMap.networkName}/genesis:/data/genesis`
+                                + ` -v $HOME/quorum/networks/${this._paramMap.networkName}/datadirs/${nodeName}:/data/quorum`
+                                + ` -p 30300`
+                                + ` -p 30303`
+                                + ` -p 50303`
+                                + ` ${config.get('containerConfig.imageName')} > /dev/null`;
+            }
+
         
             console.log(`       +- Launching ${nodeName}`);
             shell.exec(runDirective,{silent:true});
         }
+        resolve();
+    });
+}
+
+/**
+ * Extracts info on containers IP addresses and maps them to enode addresses
+ * @return {Promise}
+ */
+mapAddresses = () => {
+    return new Promise( (resolve, reject) => {
+        /**
+         * Call docker inspect on each container to get its network config
+         * docker inspect --format "{{ .NetworkSettings.Networks.$networkName.IPAddress }}" ${containerName}
+         */
+        this._containerAddresses = {};
+        this._paramMap.nodes.forEach(function(nodeName) {
+            
+            let containerName = `${this._paramMap.networkName}_${nodeName}`;
+            let ipAddress = shell.exec(`docker inspect --format "{{ .NetworkSettings.Networks.${this._paramMap.networkName}.IPAddress }}" ${containerName}`,{silent:true}).stdout;
+            this._containerAddresses[containerName] = {
+                ipAddress   : ipAddress.trim(),
+                enode       : `enode://${this._paramMap.nodeAddresses[nodeName]}@${ipAddress.trim()}:30303?discport=0` 
+            }
+        }, this);
+        fs.writeFileSync(`${config.get('volumeMountRoot')}${this._paramMap.networkName}/addresses.json`, JSON.stringify(this._containerAddresses, null, 4))
+        resolve();
+    });
+}
+
+/**
+ * Writes static-nodes.json
+ */
+writeStaticNodes = () => {
+    return new Promise( (resolve, reject) => {
+        let enodes = [];
+        this._paramMap.nodes.forEach(function(nodeName) {
+            enodes.push(this._containerAddresses[`${this._paramMap.networkName}_${nodeName}`].enode);
+        }, this);
+        
+        fs.writeFileSync(`${config.get('volumeMountRoot')}${this._paramMap.networkName}/static-nodes.json`, JSON.stringify(enodes, null, 4));
+        resolve();
+    });
+}
+
+/**
+ * Creates a permissioned-nodes json file
+ */
+writePermissioning = () => {
+    return new Promise( (resolve, reject) => {
+        let enodes = [];
+        this._paramMap.nodes.forEach(function(nodeName) {
+            enodes.push(this._containerAddresses[`${this._paramMap.networkName}_${nodeName}`].enode);
+        }, this);
+        
+        fs.writeFileSync(`${config.get('volumeMountRoot')}${this._paramMap.networkName}/permissioned-nodes.json`, JSON.stringify(enodes, null, 4));
         resolve();
     });
 }
@@ -182,6 +263,15 @@ initNetwork = () => {
         console.log('   [*]- Starting Constellation Nodes');
         this._paramMap.nodes.forEach(function(nodeName) {
             console.log(`       +- Booting constellation on ${nodeName}`);
+
+            /**
+             * Copy static-nodes & permissioned-nodes
+             */
+            shell.cp(   `${config.get('volumeMountRoot')}${this._paramMap.networkName}/static-nodes.json`,
+                        `${config.get('volumeMountRoot')}${this._paramMap.networkName}/datadirs/${nodeName}/`);
+            shell.cp(   `${config.get('volumeMountRoot')}${this._paramMap.networkName}/permissioned-nodes.json`,
+                        `${config.get('volumeMountRoot')}${this._paramMap.networkName}/datadirs/${nodeName}/`);
+
             child_process.spawnSync('docker', [ 'exec', '-d', 
                                                 `${this._paramMap.networkName}_${nodeName}`, '/bin/bash', '-c',
                                                 `nohup constellation-node /data/quorum/constellation/${nodeName}_constellation.conf 2>> /data/quorum/logs/${nodeName}_constellation.log &`], {
@@ -199,9 +289,7 @@ initNetwork = () => {
                                                 `${this._paramMap.networkName}_${nodeName}`, 
                                                 'geth', '--datadir', 
                                                 `/data/quorum/`,'init', 
-                                                '/data/genesis/genesis.json'], {
-                stdio: 'inherit'
-            });
+                                                '/data/genesis/genesis.json'], {stdio: 'inherit'});
         }, this);
         resolve();
     });

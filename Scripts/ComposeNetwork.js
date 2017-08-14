@@ -38,6 +38,12 @@ let questions = [
         type: 'input',
         name: 'portStart',
         message : 'Enter port number to start ranging from :'
+    },
+    {
+        type: 'confirm',
+        name: 'mapAllPorts',
+        message : 'Map all ports to host ports',
+        default : false
     }
 ]
 /*--------------------------------------------------------------*/
@@ -186,6 +192,7 @@ buildScaffolding = () => {
  */
 generateKeyPairs = () => {
     return new Promise( (resolve, reject) => {
+        this._paramMap.nodeAddresses = {};
         console.log('');
         console.log(' > Generating Keys');
         console.log('   [x] - Generating node keypairs')
@@ -193,6 +200,7 @@ generateKeyPairs = () => {
             let nodeName = 'Node' + i;
             console.log(`       +- ${nodeName}`);
             let nodeKeyPair = quorumKeygen.generateNodeKeys();
+            this._paramMap.nodeAddresses[nodeName] = nodeKeyPair.publicKey;
             fs.writeFileSync(this._paramMap.stagingDir + scaffolding.nodeKeys + nodeName + '_keypair.json', JSON.stringify(nodeKeyPair));
             fs.writeFileSync(this._paramMap.stagingDir + scaffolding.nodeKeys + nodeName + '_nodeKey', nodeKeyPair.privateKey);
         }
