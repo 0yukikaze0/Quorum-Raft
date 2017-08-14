@@ -172,6 +172,7 @@ launchContainers = () => {
                                 + ` -v $HOME/quorum/networks/${this._paramMap.networkName}/genesis:/data/genesis`
                                 + ` -v $HOME/quorum/networks/${this._paramMap.networkName}/datadirs/${nodeName}:/data/quorum`
                                 + ` -p ${constellationPort}:30300`
+                                + ` -p ${constellationPort}:30301`
                                 + ` -p ${rpcPort}:30303`
                                 + ` -p ${raftPort}:50303`
                                 + ` ${config.get('containerConfig.imageName')} > /dev/null`;
@@ -183,6 +184,7 @@ launchContainers = () => {
                                 + ` -v $HOME/quorum/networks/${this._paramMap.networkName}/genesis:/data/genesis`
                                 + ` -v $HOME/quorum/networks/${this._paramMap.networkName}/datadirs/${nodeName}:/data/quorum`
                                 + ` -p 30300`
+                                + ` -p 30301`
                                 + ` -p 30303`
                                 + ` -p 50303`
                                 + ` ${config.get('containerConfig.imageName')} > /dev/null`;
@@ -258,12 +260,11 @@ writePermissioning = () => {
 initNetwork = () => {
     return new Promise( (resolve, reject) => {
         /**
-         * Start constellation on all containers
+         * Start geth on all containers
          */
-        console.log('   [*]- Starting Constellation Nodes');
+        console.log('   [*]- Initializing geth Nodes');
         this._paramMap.nodes.forEach(function(nodeName) {
-            console.log(`       +- Booting constellation on ${nodeName}`);
-
+            console.log(`       +- Booting geth on ${nodeName}`);
             /**
              * Copy static-nodes & permissioned-nodes
              */
@@ -272,19 +273,6 @@ initNetwork = () => {
             shell.cp(   `${config.get('volumeMountRoot')}${this._paramMap.networkName}/permissioned-nodes.json`,
                         `${config.get('volumeMountRoot')}${this._paramMap.networkName}/datadirs/${nodeName}/`);
 
-            child_process.spawnSync('docker', [ 'exec', '-d', 
-                                                `${this._paramMap.networkName}_${nodeName}`, '/bin/bash', '-c',
-                                                `nohup constellation-node /data/quorum/constellation/${nodeName}_constellation.conf 2>> /data/quorum/logs/${nodeName}_constellation.log &`], {
-                stdio: 'inherit'
-            });
-        }, this);
-        
-        /**
-         * Start geth on all containers
-         */
-        console.log('   [*]- Starting geth Nodes');
-        this._paramMap.nodes.forEach(function(nodeName) {
-            console.log(`       +- Booting geth on ${nodeName}`);
             child_process.spawnSync('docker', [ 'exec',  
                                                 `${this._paramMap.networkName}_${nodeName}`, 
                                                 'geth', '--datadir', 

@@ -294,8 +294,8 @@ generateConstellationConfigs = () => {
         console.log(' > Writing constellation configurations');
         for (let i = 1; i <= this._paramMap.nodeCount; i++) {
             let nodeName = 'Node' + i;
-            let fileContent =     `url = "http://127.0.0.1:9000/" \n`
-                                + `port = 9000 \n`
+            let fileContent =     `url = "http://127.0.0.1:30300/" \n`
+                                + `port = 30300 \n`
                                 + `socket = "/data/quorum/constellation/${nodeName}_constellation.ipc" \n`
                                 + `otherNodeUrls = [] \n`
                                 + `publickeys = ["/data/quorum/constellation/keystore/${nodeName}_constellation.pub"] \n`
@@ -345,7 +345,6 @@ mapNetworkListing = () => {
         console.log(' > Inventory Updated');
         console.log('+-----------------------------------+');
     })
-    
 }
 
 
