@@ -38,6 +38,8 @@ validateNetworkTemplate = () => {
 loadNetworkMeta = () => {
     return new Promise( (resolve, reject) => {
         this._paramMap = JSON.parse(fs.readFileSync(`${config.get('stagingRoot')}${this._paramMap.networkName}/meta.json`));
+        // Load node ip addresses
+        this._addresses = JSON.parse(`${config.get('volumeMountRoot')}${this._paramMap.networkName}/addresses.json`);
         console.log('   [*]- Loaded network meta');
         resolve();
     });
@@ -51,10 +53,14 @@ bootConstellationNodes = () => {
     return new Promise( (resolve, reject) => {
         console.log('   [*]- Booting constellation Nodes');
         this._paramMap.nodes.forEach((nodeName) => {
-            console.log(`       +- Booting constellation on ${nodeName}`);
+
+            let ipAddress = `${this._addresses[this._paramMap.networkName +'_' + nodeName].ipAddress}`;
+            let constellationUrl = `http://${ipAddress}:30300`;
+
+            console.log(`       +- Booting constellation on ${nodeName} with url ${constellationUrl}`);
             child_process.spawnSync('docker', [ 'exec', '-d', 
                                     `${this._paramMap.networkName}_${nodeName}`, '/bin/bash', '-c',
-                                    `nohup constellation-node /data/quorum/constellation/${nodeName}_constellation.conf 2>> /data/quorum/logs/${nodeName}_constellation.log &`], {
+                                    `nohup constellation-node --url=${constellationUrl} /data/quorum/constellation/${nodeName}_constellation.conf 2>> /data/quorum/logs/${nodeName}_constellation.log &`], {
                     stdio: 'inherit'
             });
         }, this);
