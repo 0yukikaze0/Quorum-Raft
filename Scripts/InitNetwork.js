@@ -163,7 +163,8 @@ launchContainers = () => {
                 }
                 let constellationPort = lastConstellationPort + 4;
                 lastConstellationPort = constellationPort;
-                let rpcPort = constellationPort + 3;
+                let port = constellationPort + 3;
+                let rpcPort = constellationPort + 1;
                 let raftPort = rpcPort + 20000;
                 
                 runDirective =    `docker  run -td `
@@ -172,8 +173,8 @@ launchContainers = () => {
                                 + ` -v $HOME/quorum/networks/${this._paramMap.networkName}/genesis:/data/genesis`
                                 + ` -v $HOME/quorum/networks/${this._paramMap.networkName}/datadirs/${nodeName}:/data/quorum`
                                 + ` -p ${constellationPort}:30300`
-                                + ` -p ${constellationPort}:30301`
-                                + ` -p ${rpcPort}:30303`
+                                + ` -p ${rpcPort}:30301`
+                                + ` -p ${port}:30303`
                                 + ` -p ${raftPort}:50303`
                                 + ` ${config.get('containerConfig.imageName')} > /dev/null`;
 
