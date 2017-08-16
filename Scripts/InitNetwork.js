@@ -163,9 +163,9 @@ launchContainers = () => {
                 }
                 let constellationPort = lastConstellationPort + 4;
                 lastConstellationPort = constellationPort;
-                let port = constellationPort + 3;
                 let rpcPort = constellationPort + 1;
-                let raftPort = rpcPort + 20000;
+                let port = constellationPort + 3;
+                let raftPort = port + 20000;
                 
                 runDirective =    `docker  run -td `
                                 + ` --name ${this._paramMap.networkName}_${nodeName}`
@@ -268,7 +268,7 @@ writePermissioning = () => {
          */
         if(fs.existsSync(`${config.get('stagingRoot')}${this._paramMap.networkName}/external-permissioned-nodes.json`)){
             let externalNodes = JSON.parse(fs.readFileSync(`${config.get('stagingRoot')}${this._paramMap.networkName}/external-permissioned-nodes.json`));
-            console.log(`       +- Found ${externalNodes.length} nodes in external-static-nodes.json`);
+            console.log(`       +- Found ${externalNodes.length} nodes in external-permissioned-nodes.json`);
             console.log(`       +- Adding to permissioning`);
             externalNodes.forEach(function(externalNode) {
                 enodes.push(externalNode);
