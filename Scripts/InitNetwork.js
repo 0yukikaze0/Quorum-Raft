@@ -229,10 +229,23 @@ mapAddresses = () => {
  */
 writeStaticNodes = () => {
     return new Promise( (resolve, reject) => {
+        console.log('   [*]- Creating static-nodes.json');
         let enodes = [];
         this._paramMap.nodes.forEach(function(nodeName) {
             enodes.push(this._containerAddresses[`${this._paramMap.networkName}_${nodeName}`].enode);
         }, this);
+
+        /**
+         * Add any external enode mentions from external-static-nodes.json
+         */
+        if(fs.exists(`${config.get('stagingRoot')}${this._paramMap.networkName}/external-static-nodes.json`)){
+            let externalNodes = JSON.parse(fs.readFileSync(`${config.get('stagingRoot')}${this._paramMap.networkName}/external-static-nodes.json`));
+            console.log(`       +- Found ${externalNodes.length} nodes in external-static-nodes.json`);
+            console.log(`       +- Adding as RAFT participants`);
+            externalNodes.forEach(function(externalNode) {
+                enodes.push(externalNode);
+            }, this);
+        }
         
         fs.writeFileSync(`${config.get('volumeMountRoot')}${this._paramMap.networkName}/static-nodes.json`, JSON.stringify(enodes, null, 4));
         resolve();
@@ -244,11 +257,24 @@ writeStaticNodes = () => {
  */
 writePermissioning = () => {
     return new Promise( (resolve, reject) => {
+        console.log('   [*]- Creating permissioned-nodes.json');
         let enodes = [];
         this._paramMap.nodes.forEach(function(nodeName) {
             enodes.push(this._containerAddresses[`${this._paramMap.networkName}_${nodeName}`].enode);
         }, this);
         
+        /**
+         * Add any external enode mentions from external-permissioned-nodes.json
+         */
+        if(fs.exists(`${config.get('stagingRoot')}${this._paramMap.networkName}/external-permissioned-nodes.json`)){
+            let externalNodes = JSON.parse(fs.readFileSync(`${config.get('stagingRoot')}${this._paramMap.networkName}/external-permissioned-nodes.json`));
+            console.log(`       +- Found ${externalNodes.length} nodes in external-static-nodes.json`);
+            console.log(`       +- Adding to permissioning`);
+            externalNodes.forEach(function(externalNode) {
+                enodes.push(externalNode);
+            }, this);
+        }
+
         fs.writeFileSync(`${config.get('volumeMountRoot')}${this._paramMap.networkName}/permissioned-nodes.json`, JSON.stringify(enodes, null, 4));
         resolve();
     });
