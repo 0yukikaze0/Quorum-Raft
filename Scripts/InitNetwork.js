@@ -238,7 +238,7 @@ writeStaticNodes = () => {
         /**
          * Add any external enode mentions from external-static-nodes.json
          */
-        if(fs.exists(`${config.get('stagingRoot')}${this._paramMap.networkName}/external-static-nodes.json`)){
+        if(fs.existsSync(`${config.get('stagingRoot')}${this._paramMap.networkName}/external-static-nodes.json`)){
             let externalNodes = JSON.parse(fs.readFileSync(`${config.get('stagingRoot')}${this._paramMap.networkName}/external-static-nodes.json`));
             console.log(`       +- Found ${externalNodes.length} nodes in external-static-nodes.json`);
             console.log(`       +- Adding as RAFT participants`);
@@ -266,7 +266,7 @@ writePermissioning = () => {
         /**
          * Add any external enode mentions from external-permissioned-nodes.json
          */
-        if(fs.exists(`${config.get('stagingRoot')}${this._paramMap.networkName}/external-permissioned-nodes.json`)){
+        if(fs.existsSync(`${config.get('stagingRoot')}${this._paramMap.networkName}/external-permissioned-nodes.json`)){
             let externalNodes = JSON.parse(fs.readFileSync(`${config.get('stagingRoot')}${this._paramMap.networkName}/external-permissioned-nodes.json`));
             console.log(`       +- Found ${externalNodes.length} nodes in external-static-nodes.json`);
             console.log(`       +- Adding to permissioning`);
